@@ -60,6 +60,18 @@ abstract class Model
     /** @var array Loaded relations */
     protected array $relations = [];
 
+    /** @var array Casts for attributes (column => type) */
+    protected array $casts = [];
+
+    /** @var array Lista de macros registrados */
+    protected static array $macros = [];
+
+    /** @var array Lista de global scopes */
+    protected static array $globalScopes = [];
+
+    /** @var array Lista de observers */
+    protected static array $observers = [];
+
     /** @var array Registered event callbacks */
     protected static array $events = [
         'creating' => [],
@@ -195,12 +207,207 @@ abstract class Model
             return $this->relations[$name];
         }
 
+        $method = 'get' . ucfirst($name) . 'Attribute';
+        if (method_exists($this, $method)) {
+            return $this->$method($this->$name ?? null);
+        }
+
+        $value = $this->$name ?? null;
+
+        if (isset($this->casts[$name])) {
+            $value = $this->castAttribute($name, $value);
+        }
+
         if (method_exists($this, $name)) {
             $this->relations[$name] = $this->$name();
             return $this->relations[$name];
         }
 
-        return $this->$name ?? null;
+        return $value;
+    }
+
+    /**
+     * Cast attribute to specified type.
+     *
+     * @param string $key Attribute name
+     * @param mixed $value Attribute value
+     * @return mixed
+     */
+    protected function castAttribute(string $key, $value)
+    {
+        switch ($this->casts[$key]) {
+            case 'integer':
+            case 'int':
+                return (int)$value;
+            case 'float':
+            case 'double':
+                return (float)$value;
+            case 'boolean':
+            case 'bool':
+                return (bool)$value;
+            case 'array':
+            case 'json':
+                return is_string($value) ? json_decode($value, true) : (array)$value;
+            case 'datetime':
+                return $value ? new \DateTime($value) : null;
+            default:
+                return $value;
+        }
+    }
+
+    /**
+     * Magic setter to handle custom mutators and casting.
+     * 
+     * @param string $name Property name
+     * @param mixed $value Value to set
+     */
+    public function __set($name, $value)
+    {
+        $method = 'set' . ucfirst($name) . 'Attribute';
+        if (method_exists($this, $method)) {
+            $this->$name = $this->$method($value);
+            return;
+        }
+
+        if (isset($this->casts[$name])) {
+            $value = $this->prepareForSave($name, $value);
+        }
+
+        $this->$name = $value;
+    }
+
+    /**
+     * Prepare attribute value for saving based on its cast type.
+     *
+     * @param string $key Attribute name
+     * @param mixed $value Attribute value
+     * @return mixed
+     */
+    protected function prepareForSave(string $key, $value)
+    {
+        switch ($this->casts[$key]) {
+            case 'array':
+            case 'json':
+                return json_encode($value);
+            case 'boolean':
+            case 'bool':
+                return $value ? 1 : 0;
+            case 'datetime':
+                return $value instanceof \DateTime ? $value->format('Y-m-d H:i:s') : $value;
+            default:
+                return $value;
+        }
+    }
+
+    /**
+     * Handle dynamic method calls for scopes.
+     *
+     * @param string $method Method name
+     * @param array $arguments Method arguments
+     * @return mixed
+     * 
+     * Example:
+     * $activeUsers = (new User())->active()->get();
+     */
+    public function __call($method, $parameters)
+    {
+        if (isset(self::$macros[$method])) {
+            return call_user_func_array(self::$macros[$method]->bindTo($this, static::class), $parameters);
+        }
+
+        if (method_exists($this, $method)) {
+            return $this->$method(...$parameters);
+        }
+
+        throw new \BadMethodCallException("Método {$method} não existe em " . static::class);
+    }
+
+    /**
+     * Define a polymorphic relationship.
+     * 
+     * @param string $name Relationship name
+     * @param string $typeColumn Column that stores the related model type
+     * @param string $idColumn Column that stores the related model ID
+     * @return mixed
+     */
+    public function morphTo(string $name, ?string $typeColumn = null, ?string $idColumn = null)
+    {
+        $typeColumn = $typeColumn ?? "{$name}_type";
+        $idColumn = $idColumn ?? "{$name}_id";
+
+        $relatedClass = $this->$typeColumn;
+        $relatedId = $this->$idColumn;
+
+        if (!class_exists($relatedClass)) {
+            return null;
+        }
+
+        return (new $relatedClass())->where('id', '=', $relatedId)->first();
+    }
+
+    /**
+     * Define a polymorphic one-to-many relationship.
+     * 
+     * @param string $relatedModel Related model class name
+     * @param string $name Relationship name
+     * @param string $typeColumn Column that stores the related model type
+     * @param string $idColumn Column that stores the related model ID
+     * @return array
+     */
+    public function morphMany(string $relatedModel, string $name, ?string $typeColumn = null, ?string $idColumn = null): array
+    {
+        $typeColumn = $typeColumn ?? "{$name}_type";
+        $idColumn = $idColumn ?? "{$name}_id";
+
+        return (new $relatedModel())
+            ->where($typeColumn, '=', static::class)
+            ->where($idColumn, '=', $this->id)
+            ->get();
+    }
+
+    /**
+     * Register a macro (dynamic method) for the model.
+     *
+     * @param string $name Macro name
+     * @param callable $callback Macro implementation
+     * 
+     * Example:
+     * User::macro('active', function() {
+     *     return $this->where('status', '=', 'active');
+     * });
+     */
+    public static function macro(string $name, callable $callback): void
+    {
+        self::$macros[$name] = $callback;
+    }
+
+    /**
+     * Add a global scope to the model.
+     *
+     * @param string $name Scope name
+     * @param callable $callback Scope implementation
+     * 
+     * Example:
+     * User::addGlobalScope('active', function($query) {
+     *     $query->where('status', '=', 'active');
+     * });
+     */
+    public static function addGlobalScope(string $name, callable $callback): void
+    {
+        self::$globalScopes[$name] = $callback;
+    }
+
+    /**
+     * Apply all global scopes to the current query.
+     * 
+     * Example:
+     * $this->applyGlobalScopes();
+     */
+    protected function applyGlobalScopes(): void
+    {
+        foreach (self::$globalScopes as $scope) {
+            $scope($this);
+        }
     }
 
     /**
@@ -980,5 +1187,33 @@ abstract class Model
     public function toSql(): string
     {
         return $this->buildQuery();
+    }
+
+    /**
+     * Register an observer class for model events.
+     *
+     * @param string $observerClass Observer class name
+     * 
+     * Example:
+     * User::observe(UserObserver::class);
+     */
+    public static function observe(string $observerClass): void
+    {
+        self::$observers[] = new $observerClass();
+    }
+
+    /**
+     * Fire observer event methods.
+     *
+     * @param string $event Event name
+     * @param array $payload Data to pass to observer methods
+     */
+    protected static function fireObserverEvent(string $event, array &$payload): void
+    {
+        foreach (self::$observers as $observer) {
+            if (method_exists($observer, $event)) {
+                $observer->$event($payload);
+            }
+        }
     }
 }
