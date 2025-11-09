@@ -57,6 +57,9 @@ abstract class Model
     /** @var int|null OFFSET clause (for pagination) */
     protected ?int $offset = null;
 
+    /** @var array Loaded relations */
+    protected array $relations = [];
+
     /** @var array Registered event callbacks */
     protected static array $events = [
         'creating' => [],
@@ -77,6 +80,127 @@ abstract class Model
     protected static function db(): PDO
     {
         return Database::getConnection();
+    }
+
+    /**
+     * Define a one-to-one relationship.
+     *
+     * @param string $relatedModel Related model class name
+     * @param string $foreignKey Foreign key in related model
+     * @param string $localKey Local key in this model
+     * @return array|null
+     * 
+     * Example:
+     * $profile = $user->hasOne(Profile::class, 'user_id', 'id');
+     */
+    public function hasOne(string $relatedModel, string $foreignKey, string $localKey = 'id'): ?array
+    {
+        $related = new $relatedModel();
+        return $related->where($foreignKey, '=', $this->$localKey)->first();
+    }
+
+    /**
+     * Define a one-to-many relationship.
+     *
+     * @param string $relatedModel Related model class name
+     * @param string $foreignKey Foreign key in related model
+     * @param string $localKey Local key in this model
+     * @return array
+     * 
+     * Example:
+     * $posts = $user->hasMany(Post::class, 'user_id', 'id');
+     */
+    public function hasMany(string $relatedModel, string $foreignKey, string $localKey = 'id'): array
+    {
+        $related = new $relatedModel();
+        return $related->where($foreignKey, '=', $this->$localKey)->get();
+    }
+
+    /**
+     * Define an inverse one-to-one or many relationship.
+     *
+     * @param string $relatedModel Related model class name
+     * @param string $foreignKey Foreign key in this model
+     * @param string $ownerKey Local key in related model
+     * @return array|null
+     * 
+     * Example:
+     * $user = $profile->belongsTo(User::class, 'user_id', 'id');
+     */
+    public function belongsTo(string $relatedModel, string $foreignKey, string $ownerKey = 'id'): ?array
+    {
+        $related = new $relatedModel();
+        return $related->where($ownerKey, '=', $this->$foreignKey)->first();
+    }
+
+    /**
+     * Define a many-to-many relationship.
+     *
+     * @param string $relatedModel Related model class name
+     * @param string $pivotTable Pivot table name
+     * @param string $foreignPivotKey Foreign key in pivot table for this model
+     * @param string $relatedPivotKey Foreign key in pivot table for related model
+     * @param string $localKey Local key in this model
+     * @param string $relatedKey Local key in related model
+     * @return array
+     * 
+     * Example:
+     * $roles = $user->belongsToMany(Role::class, 'user_roles', 'user_id', 'role_id', 'id', 'id');
+     */
+    public function belongsToMany(
+        string $relatedModel,
+        string $pivotTable,
+        string $foreignPivotKey,
+        string $relatedPivotKey,
+        string $localKey = 'id',
+        string $relatedKey = 'id'
+    ): array {
+        $related = new $relatedModel();
+        $sql = "SELECT r.* FROM `{$related::$table}` r
+                JOIN `$pivotTable` p ON r.`$relatedKey` = p.`$relatedPivotKey`
+                WHERE p.`$foreignPivotKey` = ?";
+        $stmt = self::db()->prepare($sql);
+        $stmt->execute([$this->$localKey]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Eager load relationships.
+     *
+     * @param array $relations List of relationship method names to load
+     * @return $this
+     * 
+     * Example:
+     * $user = (new User())->with(['profile', 'posts'])->first();
+     */
+    public function with(array $relations): self
+    {
+        foreach ($relations as $relation) {
+            if (method_exists($this, $relation)) {
+                $this->relations[$relation] = $this->$relation();
+            }
+        }
+        return $this;
+    }
+
+    /**
+     * Magic getter to access relationships as properties.
+     *
+     * @param string $name Property name
+     * @return mixed
+     */
+    public function __get($name)
+    {
+        if (isset($this->relations[$name])) {
+            return $this->relations[$name];
+        }
+
+        if (method_exists($this, $name)) {
+            $this->relations[$name] = $this->$name();
+            return $this->relations[$name];
+        }
+
+        return $this->$name ?? null;
     }
 
     /**
