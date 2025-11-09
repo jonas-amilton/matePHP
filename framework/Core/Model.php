@@ -212,7 +212,7 @@ abstract class Model
             return $this->$method($this->$name ?? null);
         }
 
-        $value = $this->$name ?? null;
+        $value = property_exists($this, $name) ? $this->$name : null;
 
         if (isset($this->casts[$name])) {
             $value = $this->castAttribute($name, $value);
@@ -766,7 +766,10 @@ abstract class Model
     public static function create(array $data): array
     {
         $instance = new static();
+
         self::fireEvent('creating', $data);
+        self::fireObserverEvent('creating', $data);
+
         if (static::$timestamps) {
             $data['created_at'] = $data['updated_at'] = date('Y-m-d H:i:s');
         }
@@ -783,6 +786,8 @@ abstract class Model
 
 
         self::fireEvent('created', $new);
+        self::fireObserverEvent('created', $new);
+
         return $new;
     }
 
@@ -798,7 +803,8 @@ abstract class Model
      */
     public static function createOrUpdate(array $data, string $uniqueColumn): array
     {
-        $existing = self::where($uniqueColumn, '=', $data[$uniqueColumn]);
+        $existing = self::where($uniqueColumn, '=', $data[$uniqueColumn])->first();
+
         if ($existing) {
             self::update($existing[0]['id'], $data);
             return array_merge(['id' => $existing[0]['id']], $data);
@@ -819,12 +825,13 @@ abstract class Model
     public static function update(int $id, array $data): bool
     {
         $instance = new static();
+
         self::fireEvent('updating', $data);
+        self::fireObserverEvent('updating', $data);
 
         if (static::$timestamps) {
             $data['updated_at'] = date('Y-m-d H:i:s');
         }
-
 
         $fields = [];
         $values = [];
@@ -840,7 +847,11 @@ abstract class Model
         $success = $stmt->execute($values);
 
 
-        if ($success) self::fireEvent('updated', $data);
+        if ($success) {
+            self::fireEvent('updated', $data);
+            self::fireObserverEvent('updated', $data);
+        }
+
         return $success;
     }
 
@@ -887,6 +898,7 @@ abstract class Model
     public static function delete(int $id): bool
     {
         self::fireEvent('deleting', ['id' => $id]);
+        self::fireObserverEvent('deleting', ['id' => $id]);
 
         if (static::$softDelete) {
             $success = self::update($id, ['deleted_at' => date('Y-m-d H:i:s')]);
@@ -896,7 +908,10 @@ abstract class Model
         $stmt = self::db()->prepare("DELETE FROM `" . static::$table . "` WHERE id = ?");
         $success = $stmt->execute([$id]);
 
-        if ($success) self::fireEvent('deleted', ['id' => $id]);
+        if ($success) {
+            self::fireEvent('deleted', ['id' => $id]);
+            self::fireObserverEvent('deleted', ['id' => $id]);
+        }
 
         return $success;
     }
@@ -913,9 +928,14 @@ abstract class Model
     public static function restore(int $id): bool
     {
         self::fireEvent('restoring', ['id' => $id]);
+        self::fireObserverEvent('restoring', ['id' => $id]);
+
         $success = self::update($id, ['deleted_at' => null]);
 
-        if ($success) self::fireEvent('restored', ['id' => $id]);
+        if ($success) {
+            self::fireEvent('restored', ['id' => $id]);
+            self::fireObserverEvent('restored', ['id' => $id]);
+        }
 
         return $success;
     }
@@ -931,8 +951,18 @@ abstract class Model
      */
     public static function forceDelete(int $id): bool
     {
+        self::fireEvent('deleting', ['id' => $id]);
+        self::fireObserverEvent('deleting', ['id' => $id]);
+
         $stmt = self::db()->prepare("DELETE FROM `" . static::$table . "` WHERE id = ?");
-        return $stmt->execute([$id]);
+        $success = $stmt->execute([$id]);
+
+        if ($success) {
+            self::fireEvent('deleted', ['id' => $id]);
+            self::fireObserverEvent('deleted', ['id' => $id]);
+        }
+
+        return $success;
     }
 
     /**
@@ -983,6 +1013,8 @@ abstract class Model
      */
     protected function buildQuery(): string
     {
+        $this->applyGlobalScopes();
+
         $sql = 'SELECT * FROM `' . static::$table . '`';
         if ($this->joins) {
             $sql .= ' ' . implode(' ', $this->joins);
