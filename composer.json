@@ -1,0 +1,19 @@
+{
+  "name": "matephp/framework",
+  "description": "Mini framework PHP para APIs REST.",
+  "autoload": {
+    "psr-4": {
+      "App\\": "app/",
+      "Framework\\": "framework/",
+      "Database\\": "database/"
+    }
+  },
+  "require": {
+    "php": ">=8.0"
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "@php -r \"echo 'Autoload atualizado com sucesso!';\""
+    ]
+  }
+}

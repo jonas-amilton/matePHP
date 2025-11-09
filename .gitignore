@@ -1,0 +1,16 @@
+/vendor/
+composer.lock
+
+.env
+.env.local
+.env.*.local
+
+/.idea/
+/.vscode/
+/nbproject/
+/*.code-workspace
+
+.DS_Store
+Thumbs.db
+
+/data/mysql/
