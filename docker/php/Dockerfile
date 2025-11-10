@@ -9,4 +9,10 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /var/www/html
 
+COPY . /var/www/html
+
+RUN mkdir -p storage/cache storage/logs storage/temp \
+    && chown -R www-data:www-data storage \
+    && chmod -R 775 storage
+
 RUN composer --version
