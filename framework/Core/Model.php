@@ -37,7 +37,7 @@ abstract class Model
     protected static bool $timestamps = true;
 
     /** @var bool Enable soft deletes (deleted_at column) */
-    protected static bool $softDelete = true;
+    protected static bool $softDelete = false;
 
     /** @var array Query builder: WHERE conditions */
     protected array $wheres = [];
