@@ -15,7 +15,7 @@ class MakeControllerCommand implements Command
         }
 
         [$namespace, $className, $dir, $path] =
-            MakeHelper::parseClassName($name, 'App\Controllers', __DIR__ . '/../../../app/Controllers');
+            MakeHelper::parseClassName($name, 'App\Http\Controllers', __DIR__ . '/../../../app/Http/Controllers');
 
         if (!is_dir($dir)) mkdir($dir, 0755, true);
         if (file_exists($path)) {
@@ -26,8 +26,6 @@ class MakeControllerCommand implements Command
         $template = <<<PHP
 <?php
 namespace $namespace;
-
-use Framework\Core\Controller;
 
 class $className extends Controller
 {
