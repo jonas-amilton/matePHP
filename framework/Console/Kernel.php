@@ -11,7 +11,8 @@ class Kernel
         'make:model'      => \Framework\Console\Commands\MakeModelCommand::class,
         'make:seeder'     => \Framework\Console\Commands\MakeSeederCommand::class,
         'make:migration'  => \Framework\Console\Commands\MakeMigrationCommand::class,
-        // TODO: adicionar comandos para make:middleware, make:request, make:job, etc...
+        'make:middleware' => \Framework\Console\Commands\MakeMiddlewareCommand::class,
+        // TODO: adicionar comandos para make:request, make:job, etc...
     ];
 
     public static function handle(array $argv)
