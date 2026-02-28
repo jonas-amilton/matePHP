@@ -822,11 +822,15 @@ abstract class Model
      */
     public static function createOrUpdate(array $data, string $uniqueColumn): array
     {
-        $existing = self::where($uniqueColumn, '=', $data[$uniqueColumn])->first();
+        if (!array_key_exists($uniqueColumn, $data)) {
+            throw new \InvalidArgumentException("Unique column '{$uniqueColumn}' is missing from data.");
+        }
+
+        $existing = (new static())->where($uniqueColumn, '=', $data[$uniqueColumn])->first();
 
         if ($existing) {
-            self::update($existing[0]['id'], $data);
-            return array_merge(['id' => $existing[0]['id']], $data);
+            self::update((int)$existing['id'], $data);
+            return array_merge(['id' => $existing['id']], $data);
         }
         return self::create($data);
     }
