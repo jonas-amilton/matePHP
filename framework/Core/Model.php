@@ -522,6 +522,25 @@ abstract class Model
     }
 
     /**
+     * Add a WHERE BETWEEN condition
+     *
+     * @param string $column
+     * @param mixed $from
+     * @param mixed $to
+     * @return $this
+     *
+     * Example:
+     * $users = (new User())->whereBetween('age', 18, 30)->get();
+     */
+    public function whereBetween(string $column, $from, $to): self
+    {
+        $this->wheres[] = "`$column` BETWEEN ? AND ?";
+        $this->bindings[] = $from;
+        $this->bindings[] = $to;
+        return $this;
+    }
+
+    /**
      * Add a WHERE column IS NULL
      *
      * @param string $column
@@ -1124,17 +1143,62 @@ abstract class Model
      */
     public function paginate(int $perPage = 15, int $page = 1): array
     {
+        $perPage = max(1, $perPage);
+        $page = max(1, $page);
+
+        $countQuery = clone $this;
+        $total = $countQuery->countForCurrentQuery();
+
         $offset = ($page - 1) * $perPage;
         $this->limit($perPage)->offset($offset);
         $results = $this->get();
-        $total = $this->count();
+
         return [
             'data' => $results,
             'total' => $total,
             'per_page' => $perPage,
             'current_page' => $page,
-            'last_page' => ceil($total / $perPage),
+            'last_page' => max(1, (int)ceil($total / $perPage)),
         ];
+    }
+
+    /**
+     * Count records respecting the current query state.
+     *
+     * @return int
+     */
+    protected function countForCurrentQuery(): int
+    {
+        $stmt = self::db()->prepare($this->buildCountQuery());
+        $stmt->execute($this->bindings);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return (int)($result['total'] ?? 0);
+    }
+
+    /**
+     * Build SQL for counting rows with current filters.
+     *
+     * @return string
+     */
+    protected function buildCountQuery(): string
+    {
+        $this->applyGlobalScopes();
+
+        $sql = 'SELECT COUNT(*) AS total FROM `' . static::$table . '`';
+        if ($this->joins) {
+            $sql .= ' ' . implode(' ', $this->joins);
+        }
+
+        $wheres = $this->wheres;
+        if (static::$softDelete && !array_filter($wheres, fn($w) => stripos($w, 'deleted_at') !== false)) {
+            $wheres[] = '`deleted_at` IS NULL';
+        }
+
+        if ($wheres) {
+            $sql .= ' WHERE ' . implode(' AND ', $wheres);
+        }
+
+        return $sql;
     }
 
     /**

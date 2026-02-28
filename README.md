@@ -151,12 +151,45 @@ Deve retornar:
 
 ---
 
+## 🛠️ Comandos de geração
+
+```bash
+php cli.php make:controller UserController
+php cli.php make:model User
+php cli.php make:migration create_users_table
+php cli.php make:seeder UserSeeder
+php cli.php make:middleware AuthMiddleware
+```
+
+---
+
+## 🔎 Filtros avançados de requisição
+
+O `Request` agora suporta filtros, ordenação e paginação via query string:
+
+```http
+GET /api/users?filter[name][like]=jo&filter[id][in]=1,2,3&sort=-created_at&page=1&per_page=10
+```
+
+Formatos aceitos:
+
+- `filter[campo]=valor` (equivalente a `eq`)
+- `filter[campo][eq|ne|gt|gte|lt|lte]=valor`
+- `filter[campo][like|starts_with|ends_with]=valor`
+- `filter[campo][in|not_in]=1,2,3`
+- `filter[campo][between]=10,20`
+- `filter[campo][null|not_null]=1`
+- `sort=campo,-outro_campo` ou `sort=campo:asc,outro:desc`
+- `page` e `per_page` para paginação
+
+---
+
 ## 📁 Estrutura do projeto
 
 ```
 matePHP/
 │
-├── app/                # Controllers e Models
+├── app/                # Controllers, Middlewares e Models
 ├── framework/          # Core do framework
 ├── public/             # index.php principal
 ├── database/
