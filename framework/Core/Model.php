@@ -57,6 +57,9 @@ abstract class Model
     /** @var int|null OFFSET clause (for pagination) */
     protected ?int $offset = null;
 
+    /** @var bool Disable default soft delete filter for current query */
+    protected bool $withTrashed = false;
+
     /** @var array Loaded relations */
     protected array $relations = [];
 
@@ -921,7 +924,8 @@ abstract class Model
     public static function delete(int $id): bool
     {
         self::fireEvent('deleting', ['id' => $id]);
-        self::fireObserverEvent('deleting', ['id' => $id]);
+        $deletingPayload = ['id' => $id];
+        self::fireObserverEvent('deleting', $deletingPayload);
 
         if (static::$softDelete) {
             $success = self::update($id, ['deleted_at' => date('Y-m-d H:i:s')]);
@@ -933,7 +937,8 @@ abstract class Model
 
         if ($success) {
             self::fireEvent('deleted', ['id' => $id]);
-            self::fireObserverEvent('deleted', ['id' => $id]);
+            $deletedPayload = ['id' => $id];
+            self::fireObserverEvent('deleted', $deletedPayload);
         }
 
         return $success;
@@ -951,13 +956,15 @@ abstract class Model
     public static function restore(int $id): bool
     {
         self::fireEvent('restoring', ['id' => $id]);
-        self::fireObserverEvent('restoring', ['id' => $id]);
+        $restoringPayload = ['id' => $id];
+        self::fireObserverEvent('restoring', $restoringPayload);
 
         $success = self::update($id, ['deleted_at' => null]);
 
         if ($success) {
             self::fireEvent('restored', ['id' => $id]);
-            self::fireObserverEvent('restored', ['id' => $id]);
+            $restoredPayload = ['id' => $id];
+            self::fireObserverEvent('restored', $restoredPayload);
         }
 
         return $success;
@@ -975,14 +982,16 @@ abstract class Model
     public static function forceDelete(int $id): bool
     {
         self::fireEvent('deleting', ['id' => $id]);
-        self::fireObserverEvent('deleting', ['id' => $id]);
+        $deletingPayload = ['id' => $id];
+        self::fireObserverEvent('deleting', $deletingPayload);
 
         $stmt = self::db()->prepare("DELETE FROM `" . static::$table . "` WHERE id = ?");
         $success = $stmt->execute([$id]);
 
         if ($success) {
             self::fireEvent('deleted', ['id' => $id]);
-            self::fireObserverEvent('deleted', ['id' => $id]);
+            $deletedPayload = ['id' => $id];
+            self::fireObserverEvent('deleted', $deletedPayload);
         }
 
         return $success;
@@ -998,6 +1007,7 @@ abstract class Model
      */
     public function withTrashed(): self
     {
+        $this->withTrashed = true;
         $this->wheres = array_filter(
             $this->wheres,
             fn($w) => stripos($w, 'deleted_at') === false
@@ -1016,6 +1026,7 @@ abstract class Model
      */
     public function onlyTrashed(): self
     {
+        $this->withTrashed = true;
         $this->wheres = array_filter(
             $this->wheres,
             fn($w) => stripos($w, 'deleted_at') === false
@@ -1043,7 +1054,11 @@ abstract class Model
             $sql .= ' ' . implode(' ', $this->joins);
         }
         $wheres = $this->wheres;
-        if (static::$softDelete && !array_filter($wheres, fn($w) => stripos($w, 'deleted_at') !== false)) {
+        if (
+            static::$softDelete &&
+            !$this->withTrashed &&
+            !array_filter($wheres, fn($w) => stripos($w, 'deleted_at') !== false)
+        ) {
             $wheres[] = '`deleted_at` IS NULL';
         }
         if ($wheres) {
@@ -1194,7 +1209,11 @@ abstract class Model
         }
 
         $wheres = $this->wheres;
-        if (static::$softDelete && !array_filter($wheres, fn($w) => stripos($w, 'deleted_at') !== false)) {
+        if (
+            static::$softDelete &&
+            !$this->withTrashed &&
+            !array_filter($wheres, fn($w) => stripos($w, 'deleted_at') !== false)
+        ) {
             $wheres[] = '`deleted_at` IS NULL';
         }
 
@@ -1257,6 +1276,7 @@ abstract class Model
         $this->limit = null;
         $this->offset = null;
         $this->joins = [];
+        $this->withTrashed = false;
     }
 
     /**

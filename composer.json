@@ -12,12 +12,22 @@
       "framework/helpers/log.php"
     ]
   },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  },
   "require": {
     "php": ">=8.0"
   },
   "scripts": {
+    "phpunit": "phpunit --colors=always",
+    "test": "@phpunit",
     "post-autoload-dump": [
       "@php -r \"echo 'Autoload updated successfully!';\""
     ]
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^12"
   }
 }

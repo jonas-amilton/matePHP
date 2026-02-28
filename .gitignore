@@ -17,3 +17,5 @@ Thumbs.db
 
 /storage/*
 !/storage/.gitignore
+
+/.phpunit.cache/
